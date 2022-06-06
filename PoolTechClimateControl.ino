@@ -1,13 +1,15 @@
-#define Software_version "Version: 2.13"
+#define Software_version "Version: 2.99 dev"
 
 // Dieser Code benoetigt zwingend die folgenden Libraries:
-#include "DHT.h"
+#include <DHT.h>
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
 #include <avr/wdt.h>
 #include <DS1307RTC.h>
 #include <SD.h>
 #include <SPI.h>
+//#include <printf.h>
+
 
 tmElements_t tm;
 
@@ -35,39 +37,42 @@ bool anzeige = true;
 // Hinzugefuegt durch AiK end   
 
 // *******  Korrekturwerte der einzelnen Sensorwerte  *******
-#define Korrektur_t_1 -0.1  // Korrekturwert Innensensor Temperatur
-#define Korrektur_t_2 -0.4  // Korrekturwert Aussensensor Temperatur
-#define Korrektur_h_1  1.3  // Korrekturwert Innensensor Luftfeuchtigkeit
-#define Korrektur_h_2  2.1  // Korrekturwert Aussensensor Luftfeuchtigkeit
+float korrektur[4][2] =
+{
+  {-0.1,1.3},         // S1 innen: Temperaturkorrketur, Luftfeutigkeitskorrektur
+  {-0.4,2.1},         // S2 aussen: Temperaturkorrketur, Luftfeutigkeitskorrektur
+  {-0.4,1.7},         // S3 innen: Temperaturkorrketur, Luftfeutigkeitskorrektur
+  {-0.3,0.1}          // S4 aussen: Temperaturkorrketur, Luftfeutigkeitskorrektur
+};      // Array fuer Sensorkorrketurwerte
+
+//#define Korrektur_t_1 -0.1  // Korrekturwert Innensensor Temperatur
+//#define Korrektur_t_2 -0.4  // Korrekturwert Aussensensor Temperatur
+//#define Korrektur_h_1  1.3  // Korrekturwert Innensensor Luftfeuchtigkeit
+//#define Korrektur_h_2  2.1  // Korrekturwert Aussensensor Luftfeuchtigkeit
+//#define Korrektur_t_3 -0.4  // Korrekturwert 2. Innensensor Temperatur
+//#define Korrektur_t_4 -0.3  // Korrekturwert 2. Aussensensor Temperatur
+//#define Korrektur_h_3  1.7  // Korrekturwert 2. Innensensor Luftfeuchtigkeit
+//#define Korrektur_h_4  0.1  // Korrekturwert 2. Aussensensor Luftfeuchtigkeit
 //***********************************************************
-// Hinzugefuegt durch AiK start
-// *******  Korrekturwerte der einzelnen Sensorwerte  *******
-#define Korrektur_t_3 -0.4  // Korrekturwert 2. Innensensor Temperatur
-#define Korrektur_t_4 -0.3  // Korrekturwert 2. Aussensensor Temperatur
-#define Korrektur_h_3  1.7  // Korrekturwert 2. Innensensor Luftfeuchtigkeit
-#define Korrektur_h_4  0.1  // Korrekturwert 2. Aussensensor Luftfeuchtigkeit
 int mw_index = 0;           // Messwerteindes fuer Messwerte-Arrays
-int sensor_index = 0;       // Sensor Index fire Messwerte-Arrays 
-float t[3][2];              // Array zum Speicher aller 4 Sensor der letzen 3 Temperaturmesswerte
-float h[3][2];              // Array zum Speicher aller 4 Sensor der letzen 3 Luftfuechtigkeitsmesswerte
+int sensor_index = 0;       // Sensor Index fure Messwerte-Arrays 
+float t[4][3];              // Array zum Speicher aller 4 Sensor der letzen 3 Temperaturmesswerte
+float h[4][3];              // Array zum Speicher aller 4 Sensor der letzen 3 Luftfuechtigkeitsmesswerte
 //***********************************************************
-// Hinzugefuegt durch AiK end
 
 #define SCHALTmin   10.0// minimaler Taupunktunterschied, bei dem das Relais schaltet
 #define HYSTERESE   1.0 // Abstand von Ein- und Ausschaltpunkt
 #define TEMP1_min   8.0 // Minimale Innentemperatur, bei der die Lueftung aktiviert wird
 #define TEMP2_min  -5.0 // Minimale Aussentemperatur, bei der die Lueftung aktiviert wird
 
-DHT dht1(DHTPIN_1, DHTTYPE_1); //Der Innensensor wird ab jetzt mit dht1 angesprochen
-DHT dht2(DHTPIN_2, DHTTYPE_2); //Der Aussensensor wird ab jetzt mit dht2 angesprochen
-// Hinzugefuegt durch AiK start
+DHT dht1(DHTPIN_1, DHTTYPE_1); //Der 1. Innensensor wird ab jetzt mit dht1 angesprochen
+DHT dht2(DHTPIN_2, DHTTYPE_2); //Der 1. Aussensensor wird ab jetzt mit dht2 angesprochen
 DHT dht3(DHTPIN_3, DHTTYPE_3); //Der 2. Innensensor wird ab jetzt mit dht3 angesprochen
 DHT dht4(DHTPIN_4, DHTTYPE_4); //Der 2. Aussensensor wird ab jetzt mit dht4 angesprochen
-// Hinzugefuegt durch AiK end
 
 LiquidCrystal_I2C lcd(0x27,20,4); // LCD: I2C-Addresse und Displaygroesse setzen
 
-//++++++++++++++++++++++++++++++++ Variablen fuer das Datenlogging ***************************************
+//*************************************** Variablen fuer das Datenlogging ***************************************
 #define Headerzeile F("Datum|Zeit;Temperatur_S1;Feuchte_H1;Taupunkt_1;Temperatur_S2;Feuchte_H2;Taupunkt_2;Luefter_Ein/Aus;Laufzeit_Luefter;")
 
 #define logFileName F("Luefter1.csv")  // Name der Datei zum Abspeichern der Daten (Dateinamen-Format: 8.3)!!!!
@@ -135,33 +140,20 @@ void setup()
     
   dht1.begin(); // Sensoren starten
   dht2.begin();
-  // Hinzugefuegt durch AiK start
   dht3.begin();
   dht4.begin();
 
-
-
-  while (mw_index<2)
+ while (mw_index<2)
   {
-    h[0][mw_index] = dht1.readHumidity()+Korrektur_h_1;       // Innenluftfeuchtigkeit auslesen und unter h1 speichern
-    t[0][mw_index] = dht1.readTemperature()+ Korrektur_t_1;   // Innentemperatur auslesen und unter t1 speichern
-    h[1][mw_index] = dht2.readHumidity()+Korrektur_h_2;       // Aussenluftfeuchtigkeit auslesen und unter h2 speichern
-    t[1][mw_index] = dht2.readTemperature()+ Korrektur_t_2;   // Aussentemperatur auslesen und unter t2 speichern
-    // Hinzugefuegt durch AiK start
-    h[2][mw_index] = dht3.readHumidity()+Korrektur_h_3;       // 2. Innenluftfeuchtigkeit auslesen und unter h3 speichern
-    t[2][mw_index] = dht3.readTemperature()+ Korrektur_t_3;   // 2. Innentemperatur auslesen und unter t3 speichern
-    h[3][mw_index] = dht4.readHumidity()+Korrektur_h_4;       // 2. Aussenluftfeuchtigkeit auslesen und unter h4 speichern
-    t[3][mw_index] = dht4.readTemperature()+ Korrektur_t_4;   // 2. Aussentemperatur auslesen und unter t4 speichern
+    read_sensor(mw_index);
     mw_index++;
-    delay(500);
   }
   mw_index=0;
 
+ 
 }
 
 void loop() {
-
-
     
     if (fehler == true)  // Pruefen, ob gueltige Werte von den Sensoren kommen
     {
@@ -186,6 +178,8 @@ void loop() {
 
   if (mw_index>2) mw_index=0; // Messwerteindex zuruecksetzen
 
+  read_sensor (mw_index);
+
    //**** Taupunkte errechnen********
    float Taupunkt_1 = taupunkt(t[0][mw_index], h[0][mw_index]);
    float Taupunkt_2 = taupunkt(t[1][mw_index], h[0][mw_index]);
@@ -200,6 +194,7 @@ void loop() {
    werteausgabe(t[1][mw_index], h[1][mw_index],Taupunkt_2,1);
    werteausgabe(t[2][mw_index], h[2][mw_index],Taupunkt_3,2);
    werteausgabe(t[3][mw_index], h[3][mw_index],Taupunkt_4,3);
+   Serial.println();
 
    delay(6000); // Zeit um das Display zu lesen
    wdt_reset(); // Watchdog zuruecksetzen
@@ -414,20 +409,22 @@ bool RTC_start()
 void werteausgabe(float t, float h, float tp, int row)
 {
    char buffer_float[6];
-   String buffer_row;
+   String buffer_row="";
 
-   dtostrf(t,5,1,buffer_float);
-   buffer_row=String(buffer_float)+(uint8_t)0+" ";  // Sonderzeichen °C
+   dtostrf(t,4,1,buffer_float);
+   buffer_row=String(buffer_float)+"C ";  // Sonderzeichen °C
    dtostrf(h,5,1,buffer_float);
-   buffer_row=buffer_row+String(buffer_float)+"% "; 
+   buffer_row=" "+buffer_row+String(buffer_float)+"% "; 
    dtostrf(tp,5,1,buffer_float);
-   buffer_row=buffer_row+String(buffer_float)+
-   
-   
-   (uint8_t)0+" ";  // Sonderzeichen °C   
+   buffer_row=buffer_row+String(buffer_float)+"C";  // Sonderzeichen °C   
    lcd.setCursor(0,row);
    lcd.print(buffer_row);
    Serial.println(buffer_row);
+   lcd.setCursor(5,row);
+   lcd.write((uint8_t)0); // Sonderzeichen °C Sensor Temperatur
+   lcd.setCursor(19,row);
+   lcd.write((uint8_t)0); // Sonderzeichen °C Taupunkt
+
 }
 
 void check_sensor (int mw_index)
@@ -440,7 +437,7 @@ void check_sensor (int mw_index)
       {
         sprintf(buffer,"Fehler beim Auslesen von Sensor %i! t=%d; h=%d", i+1, t[i][mw_index], h[i][mw_index]);
         Serial.println(buffer);
-        sprintf(buffer,"Fehler S%1!", i+1);
+        sprintf(buffer,"Fehler S%i!", i+1);
         lcd.setCursor(5,i);
         lcd.print(buffer);
         fehler = true;
@@ -449,11 +446,28 @@ void check_sensor (int mw_index)
       else 
       {
        lcd.setCursor(5,i);
-       sprintf(buffer,"S%1 ist OK!", i+1);
+       sprintf(buffer,"S%i ist OK!", i+1);
+       Serial.println(buffer);
        lcd.print(buffer);
       }
       i++;
       delay(1000);
     }
     Serial.println();
+}
+
+void read_sensor (int mw_index) {
+
+
+      h[0][mw_index] = dht1.readHumidity()+korrektur[0][1];     // auslesen S1 Luftfeuchtigkeit und speichern unter h[mw_index] 
+      t[0][mw_index] = dht1.readTemperature()+korrektur[0][0];  // auslesen S1 Temperatur und speichern unter t[mw_index]
+      h[1][mw_index] = dht2.readHumidity()+korrektur[1][1];     // auslesen S2 Luftfeuchtigkeit und speichern unter h[mw_index] 
+      t[1][mw_index] = dht2.readTemperature()+korrektur[1][0];  // auslesen S2 Temperatur und speichern unter t[mw_index]
+      h[2][mw_index] = dht3.readHumidity()+korrektur[2][1];     // auslesen S3 Luftfeuchtigkeit und speichern unter h[mw_index] 
+      t[2][mw_index] = dht3.readTemperature()+korrektur[2][0];  // auslesen S3 Temperatur und speichern unter t[mw_index]
+      h[3][mw_index] = dht4.readHumidity()+korrektur[3][1];     // auslesen S4 Luftfeuchtigkeit und speichern unter h[mw_index] 
+      t[3][mw_index] = dht4.readTemperature()+korrektur[3][0];  // auslesen S4 Temperatur und speichern unter t[mw_index]
+
+      delay(1000);
+
 }
