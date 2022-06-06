@@ -1,6 +1,6 @@
 #define Software_version "Version: 2.99 dev"
 
-// Dieser Code benoetigt zwingend die folgenden Libraries:
+// This code needs the following libraries
 #include <DHT.h>
 #include <Wire.h> 
 #include <LiquidCrystal_I2C.h>
