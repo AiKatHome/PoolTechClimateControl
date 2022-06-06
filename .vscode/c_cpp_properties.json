@@ -7,7 +7,10 @@
             "compilerArgs": [],
             "intelliSenseMode": "windows-msvc-x64",
             "includePath": [
-                "${workspaceFolder}/**"
+                "${workspaceFolder}/**",
+                "C:\\Users\\kurt.aigner\\OneDrive - Dynatrace\\Desktop\\home\\Arduino\\hardware\\arduino\\avr\\libraries\\SPI\\src",
+                "C:\\Users\\kurt.aigner\\OneDrive - Dynatrace\\Desktop\\home\\Arduino\\hardware\\arduino\\avr\\libraries\\SPI\\**",
+                "C:\\Users\\kurt.aigner\\OneDrive - Dynatrace\\Desktop\\home\\Arduino\\**"
             ],
             "forcedInclude": [],
             "cStandard": "c17",
@@ -556,6 +559,21 @@
                 "__BUILTIN_AVR_FMUL=1",
                 "USBCON"
             ]
+        },
+        {
+            "name": "AiKsArduino",
+            "includePath": [
+                "${default}",
+                "C:\\Users\\kurt.aigner\\OneDrive - Dynatrace\\Desktop\\home\\Arduino\\libraries\\**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64"
         }
     ]
 }
