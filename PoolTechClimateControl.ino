@@ -1,4 +1,27 @@
-#define Software_version "Version: 2.99 dev"
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+*                                                                                                         *  
+*                 P o o l   T e c h   C l i m a t e  C o n t r o l for Arduino                            *
+*                                 a drew point vantilation system                                         *
+*                                                                                                         *
+*                                             A       K         K                                         *
+*                                           A A   I   K       K                                           *
+*                                         A   A       K     K                                             *
+*                                       A     A   I   K   K  K                                            *
+*                                     A A A A A   I   K K      K                                          *
+*                                   A         A   I   K          K                                        *
+*                                                                                                         * 
+*   This code bases on https://github.com/MakeMagazinDE/Taupunktluefter                                   *
+*                                                                                                         *     
+*   I mainly adopted it for my purpose (climate control for my pool tech shaft) Jun 2022.                 *
+*   This repository can be found here https://github.com/AiKatHome/PoolTechClimateControl                 *
+*                                                                                                         *            
+*   + added a pair of sensors (now 2 inside and 2 outside) to detect defect sensors and false measures    *
+*   + store 3 measures to average the results (again to compensate false measures)                        *
+*   + there is a push button to activate the display                                                      *
+*                                                                                                         *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+#define SW_version "Version: 2.99 dev"
 
 // This code needs the following libraries
 #include <DHT.h>
@@ -8,267 +31,271 @@
 #include <DS1307RTC.h>
 #include <SD.h>
 #include <SPI.h>
-//#include <printf.h>
+
+#define PINFAN      6  // Pin for the fan relay
+#define PINDHT_SI1  5  // Data pin for DHT sensor 1 inside
+#define PINDHT_SI2  4  // Data pin for DHT sensor 2 inside
+#define PINDHT_SO1  7  // Data pin for DHT sensor 1 outside
+#define PINDHT_SO2  8  // Data pin for DHT sensor 2 outside
+#define PINERROR    9  // Pin for error LED
+#define PINDISPLAY  1  // Pin to active the LCD display
+
+#define FAN_ON LOW     // ouput to switch fan on
+#define FAN_OFF HIGH   // ouput to switch fan off
+bool fan;              // current fan state
+bool error = true;     // error state
+bool display = true;   // display on/off 
+
+#define DHTTYPE_SI1 DHT22 // DHT 22 sensor 1 inside 
+#define DHTTYPE_SI2 DHT22 // DHT 22 sensor 2 inside
+#define DHTTYPE_SO1 DHT22 // DHT 22 sensor 1 outside
+#define DHTTYPE_SO2 DHT22 // DHT 22 sensor 2 outside
 
 
-tmElements_t tm;
-
-#define RELAIPIN 6  // Anschluss des Luefter-Relais
-#define DHTPIN_1 5  // Datenleitung fuer den DHT-Sensor 1 (innen)
-#define DHTPIN_2 4  // Datenleitung fuer den DHT-Sensor 2 (aussen)
-// Hinzugefuegt durch AiK start
-#define DHTPIN_3 7  // Datenleitung fuer den DHT-Sensor 3 (2. innen)
-#define DHTPIN_4 8  // Datenleitung fuer den DHT-Sensor 4 (2. aussen)
-#define ERRORPIN 9  // Anschluss der roten Error-LED
-#define DIPLAYPIN 1 // Taster der das Display/Ausgae aktiviert
-// Hinzugefuegt durch AiK end
-
-#define RELAIS_EIN LOW
-#define RELAIS_AUS HIGH
-bool rel;
-bool fehler = true;
-bool anzeige = true;
-
-#define DHTTYPE_1 DHT22 // DHT 22 
-#define DHTTYPE_2 DHT22 // DHT 22
-// Hinzugefuegt durch AiK start
-#define DHTTYPE_3 DHT22 // DHT 22 
-#define DHTTYPE_4 DHT22 // DHT 22
-// Hinzugefuegt durch AiK end   
-
-// *******  Korrekturwerte der einzelnen Sensorwerte  *******
-float korrektur[4][2] =
+// *******  correction values for DHT sensors  *******
+float sensor_corr[4][2] =
 {
-  {-0.1,1.3},         // S1 innen: Temperaturkorrketur, Luftfeutigkeitskorrektur
-  {-0.4,2.1},         // S2 aussen: Temperaturkorrketur, Luftfeutigkeitskorrektur
-  {-0.4,1.7},         // S3 innen: Temperaturkorrketur, Luftfeutigkeitskorrektur
-  {-0.3,0.1}          // S4 aussen: Temperaturkorrketur, Luftfeutigkeitskorrektur
-};      // Array fuer Sensorkorrketurwerte
+  {-0.1,1.3},         // SI1 correction (needs to be added to the data): temp, humidity
+  {-0.4,2.1},         // SI2 correction (needs to be added to the data): temp, humidity
+  {-0.4,1.7},         // SO1 correction (needs to be added to the data): temp, humidity
+  {-0.3,0.1}          // SO2 correction (needs to be added to the data): temp, humidity
+};
 
-//#define Korrektur_t_1 -0.1  // Korrekturwert Innensensor Temperatur
-//#define Korrektur_t_2 -0.4  // Korrekturwert Aussensensor Temperatur
-//#define Korrektur_h_1  1.3  // Korrekturwert Innensensor Luftfeuchtigkeit
-//#define Korrektur_h_2  2.1  // Korrekturwert Aussensensor Luftfeuchtigkeit
-//#define Korrektur_t_3 -0.4  // Korrekturwert 2. Innensensor Temperatur
-//#define Korrektur_t_4 -0.3  // Korrekturwert 2. Aussensensor Temperatur
-//#define Korrektur_h_3  1.7  // Korrekturwert 2. Innensensor Luftfeuchtigkeit
-//#define Korrektur_h_4  0.1  // Korrekturwert 2. Aussensensor Luftfeuchtigkeit
-//***********************************************************
-int mw_index = 0;           // Messwerteindes fuer Messwerte-Arrays
-int sensor_index = 0;       // Sensor Index fure Messwerte-Arrays 
-float t[4][3];              // Array zum Speicher aller 4 Sensor der letzen 3 Temperaturmesswerte
-float h[4][3];              // Array zum Speicher aller 4 Sensor der letzen 3 Luftfuechtigkeitsmesswerte
-//***********************************************************
+//******* variables to handle temp and humidity measures *******
+float t[4][3];              // Array to store for all 4 sensors the last 3 temperature measures
+float h[4][3];              // Array to store for all 4 sensors the last 3 humidity measures
+int measure_index = 0;      // measure array index: 0-2 used to access the array
+int sensor_index = 0;       // sensor array index: 0-3 used to access the array
+int pre_measure_index = 0;  // previous measure index: 0-2 used to access the array
 
-#define SCHALTmin   10.0// minimaler Taupunktunterschied, bei dem das Relais schaltet
-#define HYSTERESE   1.0 // Abstand von Ein- und Ausschaltpunkt
-#define TEMP1_min   8.0 // Minimale Innentemperatur, bei der die Lueftung aktiviert wird
-#define TEMP2_min  -5.0 // Minimale Aussentemperatur, bei der die Lueftung aktiviert wird
+#define DEW_POINT_MIN     8.0   // minimum dew point delta to switch on the fan
+#define HYSTERESIS        2.0   // dew point delta between an switch on/off of the fan
+#define TEMP_MIN_INSIDE   5.0   // minimum temperature inside, where the fan can be activated
+#define TEMP_MIN_OUTSIDE  -5.0  // minimum temperature outside, where the fan can be activated
 
-DHT dht1(DHTPIN_1, DHTTYPE_1); //Der 1. Innensensor wird ab jetzt mit dht1 angesprochen
-DHT dht2(DHTPIN_2, DHTTYPE_2); //Der 1. Aussensensor wird ab jetzt mit dht2 angesprochen
-DHT dht3(DHTPIN_3, DHTTYPE_3); //Der 2. Innensensor wird ab jetzt mit dht3 angesprochen
-DHT dht4(DHTPIN_4, DHTTYPE_4); //Der 2. Aussensensor wird ab jetzt mit dht4 angesprochen
+DHT dhtsi1(PINDHT_SI1, DHTTYPE_SI1);  //inside sendor 1 is now addressed via "dhtsi1"
+DHT dhtsi2(PINDHT_SI2, DHTTYPE_SI2);  //inside sendor 2 is now addressed via "dhtsi2"
+DHT dhtso1(PINDHT_SO1, DHTTYPE_SO1);  //outside sendor 1 is now addressed via "dhtso1"
+DHT dhtso2(PINDHT_SO2, DHTTYPE_SO2);  //outside sendor 2 is now addressed via "dhtso2"
 
-LiquidCrystal_I2C lcd(0x27,20,4); // LCD: I2C-Addresse und Displaygroesse setzen
+LiquidCrystal_I2C lcd(0x27,20,4); // LCD: setting the I2C address and display size
+tmElements_t tm;                  // tm is the insance of the real time clock DS1307RTC
 
-//*************************************** Variablen fuer das Datenlogging ***************************************
-#define Headerzeile F("Datum|Zeit;Temperatur_S1;Feuchte_H1;Taupunkt_1;Temperatur_S2;Feuchte_H2;Taupunkt_2;Luefter_Ein/Aus;Laufzeit_Luefter;")
+//******* variables for data logging on SD card *******
+#define logHeaderLine F("Date|Time;Temp_SI1;Humidity_SI1;DrewPoint_SI1;Temp_SI2;Humidity_SI2;DrewPoint_SI2;Temp_SO1;Humidity_SO1;DrewPoint_SO;Temp_SO2;Humidity_SO2;DrewPoint_SO2;Fan_On/Off;Fan_Runtime;")
+#define logFileName F("PTCC_Log.csv")   // File name to store the log data (file format: 8.3)!!!!
+#define LogInterval 15                  // Interval in min to store the measures ( 5 = every 5 min)
 
-#define logFileName F("Luefter1.csv")  // Name der Datei zum Abspeichern der Daten (Dateinamen-Format: 8.3)!!!!
-#define LogInterval 15                 // Wie oft werden die Messwerte aufgezeichnet ( 5 = alle 5 Minuten)
+bool logging = true;                    // Should data be logged on SD card?
+String LogData = "" ;                   // Variable build the logging string
+char stamp[17];                         // Variable fot the time stamp
+unsigned int FanStart = 0;              // When was the fan started?
+unsigned int FanRuntime = 0;            // How long was the fan running in min?
+char StrFanRuntime[6];                  // Fan runtime as a string
+uint8_t Today = 0;                      // Today's date; needed to detect the next day
+bool DaySwitched=false;
 
-bool logging = true;                    // Sollen die Daten ueberhaupt protokolliert werden?
-String LogData = "" ;                   // Variable zum Zusammensetzen des Logging-Strings.
-char stamp[17];                         // Variable fuer den Zeitstempel.
-unsigned int LuefterStart = 0;          // Wann wurde der Luefter eingeschaltet?
-unsigned int LuefterLaufzeit = 0;       // Wie lange lief der Luefter?
-char StrLuefterzeit[6];                 // Luefterlaufzeit als String zur weiteren Verwendung.
-uint8_t Today = 0;                      // Das heutige Datum (nur Tag), zur Speicherung bei Tageswechsel.
-bool Tageswechsel=false;
-//********************************************************************************************************
 
 void setup() 
 {
-  wdt_enable(WDTO_8S); // Watchdog timer auf 8 Sekunden stellen
-  Serial.begin(9600);  // Serielle Ausgabe, falls noch kein LCD angeschlossen ist
+  wdt_enable(WDTO_8S); // set watchdog timer to 8 seconds
+  Serial.begin(9600);  // serial print, which can be used for debugging or if no LCD used
   lcd.init();
   lcd.backlight();  
   
-  //--------------------- Logging ------------------------------------------------------------------------------------  
+  //******* data logging on SD card *******
   if (logging == true)
   { 
     lcd.setCursor(0,1);
-    lcd.print(Software_version);  // Welche Softwareversion laeuft gerade
-    Serial.println(Software_version);
-    RTC_start();     // RTC-Modul testen. Wenn Fehler, dann kein Logging
-    delay (4000);    // Zeit um das Display zu lesen
+    lcd.print(SW_version);        // display software version
+    Serial.println(SW_version);
+    RTC_start();                  // RTC modul test. If there is an error => no logging
+    delay (4000);                 // Delay to read the display
     lcd.clear(); 
-     wdt_reset();  // Watchdog zuruecksetzen
-    test_SD();       // SD-Karte suchen. Wenn nicht gefunden, dann kein Logging ausfuehren
+    wdt_reset();                  // Watchdog reset
+    test_SD();                    // SD card test. If there is an error => no logging
     Today = tm.Day ;
-    //------------------------------------------------ Neustart aufzeichnen -------------------------------------
-  if (logging == true) // kann sich ja geaendert haben wenn Fehler bei RTC oder SD
-  {   
-    make_time_stamp();   
-    File logFile = SD.open(logFileName, FILE_WRITE);
-    logFile.print(stamp);
-    logFile.println(F(": Neustart"));                    // Damit festgehalten wird, wie oft die Steuerung neu gestartet ist
-    logFile.close();  
-  }
-  } //---------------------------------------------------------------------------------------------------------------------
+    //******* record restart *******
+    if (logging == true)          // could have changed, due to errors on RTC or SD
+    {   
+      make_time_stamp();   
+      File logFile = SD.open(logFileName, FILE_WRITE);
+      logFile.print(stamp);
+      logFile.println(F(": Restart"));   // Needed to log how often it was restarted (manual, power on/off/ or by the watchdog)
+      logFile.close();  
+    }
+  } 
     
-  pinMode(RELAIPIN, OUTPUT);          // Relaispin als Output definieren
-  digitalWrite(RELAIPIN, RELAIS_AUS); // Relais ausschalten
-  // Hinzugefuegt durch AiK start
-  pinMode(ERRORPIN, OUTPUT);          // Errorpin als Output definieren
-  digitalWrite(ERRORPIN, HIGH); // Error-LED einschalten
-  // Hinzugefuegt durch AiK end
+  pinMode(PINFAN, OUTPUT);        // Define fan pin as output
+  digitalWrite(PINFAN, FAN_OFF);  // turn fan off
+  pinMode(PINERROR, OUTPUT);      // Define error pin as output
+  digitalWrite(PINERROR, HIGH);   // turn on error led 
   
-  Serial.println(F("Teste Sensoren.."));
-
+  Serial.println(F("Testing sensors.."));
   lcd.clear();                  
   lcd.setCursor(0,0);
-  lcd.print(F("Test"));
-  lcd.setCursor(0,1);
-  lcd.print(F("..."));
-  
-  byte Grad[8] = {B00111,B00101,B00111,B0000,B00000,B00000,B00000,B00000};      // Sonderzeichen ° definieren
-  lcd.createChar(0, Grad);
-  byte Strich[8] = {B00100,B00100,B00100,B00100,B00100,B00100,B00100,B00100};   // Sonderzeichen senkrechter Strich definieren
-  lcd.createChar(1, Strich);
-    
-  dht1.begin(); // Sensoren starten
-  dht2.begin();
-  dht3.begin();
-  dht4.begin();
-
- while (mw_index<2)
-  {
-    read_sensor(mw_index);
-    mw_index++;
-  }
-  mw_index=0;
-
+  lcd.print(F("Test "));
  
+  
+  byte Degree[8] = {B00111,B00101,B00111,B0000,B00000,B00000,B00000,B00000};      // define special char degree => °
+  lcd.createChar(0, Degree);
+    
+  dhtsi1.begin();                 // start sensors
+  dhtsi2.begin();
+  dhtso1.begin();
+  dhtso2.begin();
+
+  measure_index=0;
+  while (measure_index<3)         // read sensors at start-up and fill measure array with inital measuers
+    {
+      read_sensor(measure_index);
+      measure_index++;
+    }
+  measure_index=0;
+  pre_measure_index=2;
 }
 
 void loop() {
     
-    if (fehler == true)  // Pruefen, ob gueltige Werte von den Sensoren kommen
+    if (error == true)              // check if we have faulty measures from sensors
     {
-    fehler = false;
-    digitalWrite(ERRORPIN, LOW); // Error-LED ausschalten    
-     
-    check_sensor(mw_index);
-     // Hinzugefuegt durch AiK end
-
-    delay(2000);  // Eigentlich sollte hie gewartet werden um das Display zu lesen, aber es fuehrt zum Neustart/Absturz WTF!!!!
-
+      error = false;
+      digitalWrite(PINERROR, LOW);  // Error LED off    
+      check_sensor(measure_index);  // recheck sensors
+      delay(2000);
     }
      
-   if (fehler == true) 
+   if (error == true) 
    {
-    digitalWrite(RELAIPIN, RELAIS_AUS); // Relais ausschalten 
+    digitalWrite(PINFAN, FAN_OFF); // If there still is an error => fan off 
     lcd.setCursor(0,3);
-    lcd.print(F("CPU Neustart....."));
-    while (1);  // Endlosschleife um das Display zu lesen und die CPU durch den Watchdog neu zu starten
+    lcd.print(F("Restart ....."));
+    while (1);                     // This infinity loop will trigger a restart via the watchdog
    }
-   wdt_reset();  // Watchdog zuruecksetzen
+   wdt_reset();                    // Watchdog reset, if we had no error
 
-  if (mw_index>2) mw_index=0; // Messwerteindex zuruecksetzen
+  if (measure_index>2) measure_index=0; // measure index reset (2 is max)
 
-  read_sensor (mw_index);
+  read_sensor (measure_index);
 
-   //**** Taupunkte errechnen********
-   float Taupunkt_1 = taupunkt(t[0][mw_index], h[0][mw_index]);
-   float Taupunkt_2 = taupunkt(t[1][mw_index], h[0][mw_index]);
-   float Taupunkt_3 = taupunkt(t[2][mw_index], h[0][mw_index]);
-   float Taupunkt_4 = taupunkt(t[3][mw_index], h[0][mw_index]);
+  average_measures ();
+
+   //******* Drew point calculation *******
+   float DrewPoint_SI1 = drewpoint(t[0][measure_index], h[0][measure_index]);
+   float DrewPoint_SI2 = drewpoint(t[1][measure_index], h[1][measure_index]);
+   float DrewPoint_SO1 = drewpoint(t[2][measure_index], h[2][measure_index]);
+   float DrewPoint_SO2 = drewpoint(t[3][measure_index], h[3][measure_index]);
 
  
-   // Werteausgabe auf dem I2C-Display
+   //******* print measures of all 4 sensors on I2C display *******
    lcd.clear();
-
-   werteausgabe(t[0][mw_index], h[0][mw_index],Taupunkt_1,0);
-   werteausgabe(t[1][mw_index], h[1][mw_index],Taupunkt_2,1);
-   werteausgabe(t[2][mw_index], h[2][mw_index],Taupunkt_3,2);
-   werteausgabe(t[3][mw_index], h[3][mw_index],Taupunkt_4,3);
+   measuresoutput(t[0][measure_index], h[0][measure_index],DrewPoint_SI1,0);
+   measuresoutput(t[1][measure_index], h[1][measure_index],DrewPoint_SI2,1);
+   measuresoutput(t[2][measure_index], h[2][measure_index],DrewPoint_SO1,2);
+   measuresoutput(t[3][measure_index], h[3][measure_index],DrewPoint_SO2,3);
    Serial.println();
 
-   delay(6000); // Zeit um das Display zu lesen
-   wdt_reset(); // Watchdog zuruecksetzen
+   delay(6000); 
+   wdt_reset(); // rest watchdog
 
    lcd.clear();
    lcd.setCursor(0,0);
    
-   float DeltaTP = Taupunkt_1 - Taupunkt_2;
+float DrewPointDiffI = abs(DrewPoint_SI1 - DrewPoint_SI2);
+if (DrewPointDiffI>1) {
+    lcd.println(F("ERROR diff DP inside > 1!"));
+    Serial.println(F("ERROR diff drew point inside abs(SI1 - SI2) > 1!"));
+    error=true;
+  }
+  else{
+    error=false;
+  }
+float DrewPointI = (DrewPoint_SI1 + DrewPoint_SI2)/2;    // calcutlate average drew point inside
 
-   if (DeltaTP > (SCHALTmin + HYSTERESE))rel = true;
-   if (DeltaTP < (SCHALTmin))rel = false;
-   if (t[0][mw_index] < TEMP1_min )rel = false;
-   if (t[1][mw_index] < TEMP2_min )rel = false;
+float DrewPointDiffO = abs(DrewPoint_SO1 - DrewPoint_SO2);
+if (DrewPointDiffO>1) {
+    lcd.println(F("ERROR diff DP outside > 1!"));
+    Serial.println(F("ERROR diff drew point inside abs(SO1 - SO2) > 1!"));
+    error=true;
+  }
+  else{
+    error=false;
+  }
+float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average drew point outside  
+  float DeltaDP = DrewPointI - DrewPointO;
 
-   if (rel == true)
-   {
-    digitalWrite(RELAIPIN, RELAIS_EIN); // Relais einschalten
-    lcd.print(F("Lueftung AN"));  
-   } 
-   else 
-   {                             
-    digitalWrite(RELAIPIN, RELAIS_AUS); // Relais ausschalten
-    lcd.print(F("Lueftung AUS"));
-   }
+  if (DeltaDP > (DEW_POINT_MIN + HYSTERESIS))fan = true;
+  if (DeltaDP < (DEW_POINT_MIN))fan = false;
+  if (t[0][measure_index] < TEMP_MIN_INSIDE )fan = false;
+  if (t[1][measure_index] < TEMP_MIN_OUTSIDE )fan = false;
 
-   lcd.setCursor(0,1);
-   lcd.print("Delta TP: ");
-   lcd.print(DeltaTP);
-   lcd.write((uint8_t)0); // Sonderzeichen °C
-   lcd.write('C');
+  if (fan == true)
+  {
+  digitalWrite(PINFAN, FAN_ON); // switch fan on
+  lcd.print(F("Fan is ON"));  
+  } 
+  else 
+  {                             
+  digitalWrite(PINFAN, FAN_OFF); // switch fan off
+  lcd.print(F("Fan is OFF"));
+  }
 
-   delay(4000);   // Wartezeit zwischen zwei Messungen
-   wdt_reset();   // Watchdog zuruecksetzen
-   mw_index++;
+  lcd.setCursor(0,1);
+  lcd.print(F("Delta DP:    "));
+  lcd.print(DeltaDP);
+  lcd.write((uint8_t)0); // special char degree °
+  lcd.setCursor(0,2);
+  lcd.print(F("DP ins. dif:  "));
+  lcd.print(DrewPointDiffI);
+  lcd.setCursor(0,3);
+  lcd.print(F("DP outs. dif: "));
+  lcd.print(DrewPointDiffO);
    
-  //--------------------------------------------logging-----------------------------------------------------
+
+  //******* log data *******
    if (logging == true)
    { 
-      if  ( Today  != tm.Day)                                                     // Tageswechsel ==> Luefterzeit abspeichern
+      if  ( Today  != tm.Day)                                     // DaySwitched ==> save fan runtime
       {  
-        Tageswechsel = true;                                                    // ==> Sofort speichern (siehe SD.ino) ==> Nicht erst wenn LogIntervall abgelaufen ist
-         if (LuefterStart > 0 ) LuefterLaufzeit += (1440 - LuefterStart);       // ==>Luefter laeuft gerade
-         snprintf(StrLuefterzeit,sizeof(StrLuefterzeit),"%d;",LuefterLaufzeit); 
+        DaySwitched = true;                                        
+         if (FanStart > 0 ) FanRuntime += (1440 - FanStart);       // fan running calulate new runtime
+         snprintf(StrFanRuntime,sizeof(StrFanRuntime),"%d;",FanRuntime); 
         Today = tm.Day;
-        LuefterLaufzeit = 0;
+        FanRuntime = 0;
       } 
       else 
       {
-        strcpy( StrLuefterzeit , "0;");    // Kein Tageswechsel, nur Platzhalter abspeichern
+        strcpy( StrFanRuntime , "0;");    // No day switch
       }
 
       char buff[4];
       LogData="";
-      dtostrf(t[0][mw_index], 2, 1, buff); LogData += buff ; LogData += ';';
-      dtostrf(h[0][mw_index], 2, 1, buff); LogData += buff ; LogData += ';';
-      dtostrf(Taupunkt_1, 2, 1, buff); LogData += buff ; LogData += ';';
-      dtostrf(t[1][mw_index], 2, 1, buff); LogData += buff ; LogData += ';';
-      dtostrf(h[1][mw_index], 2, 1, buff); LogData += buff;LogData += ';';
-      dtostrf(Taupunkt_2, 2, 1, buff); LogData += buff;LogData += ';';
-      dtostrf(t[2][mw_index], 2, 1, buff); LogData += buff ; LogData += ';';
-      dtostrf(h[2][mw_index], 2, 1, buff); LogData += buff;LogData += ';';
-      dtostrf(Taupunkt_3, 2, 1, buff); LogData += buff;LogData += ';';
-      dtostrf(t[3][mw_index], 2, 1, buff); LogData += buff ; LogData += ';';
-      dtostrf(h[3][mw_index], 2, 1, buff); LogData += buff;LogData += ';';
-      dtostrf(Taupunkt_2, 2, 1, buff); LogData += buff;LogData += ';';
-      if (rel == true) LogData +="1;"; else LogData += "0;";
-      LogData += StrLuefterzeit;
+      dtostrf(t[0][measure_index], 2, 1, buff); LogData += buff ; LogData += ';';
+      dtostrf(h[0][measure_index], 2, 1, buff); LogData += buff ; LogData += ';';
+      dtostrf(DrewPoint_SI1, 2, 1, buff); LogData += buff ; LogData += ';';
+      dtostrf(t[1][measure_index], 2, 1, buff); LogData += buff ; LogData += ';';
+      dtostrf(h[1][measure_index], 2, 1, buff); LogData += buff;LogData += ';';
+      dtostrf(DrewPoint_SI2, 2, 1, buff); LogData += buff;LogData += ';';
+      dtostrf(t[2][measure_index], 2, 1, buff); LogData += buff ; LogData += ';';
+      dtostrf(h[2][measure_index], 2, 1, buff); LogData += buff;LogData += ';';
+      dtostrf(DrewPoint_SO1, 2, 1, buff); LogData += buff;LogData += ';';
+      dtostrf(t[3][measure_index], 2, 1, buff); LogData += buff ; LogData += ';';
+      dtostrf(h[3][measure_index], 2, 1, buff); LogData += buff;LogData += ';';
+      dtostrf(DrewPoint_SI2, 2, 1, buff); LogData += buff;LogData += ';';
+      if (fan == true) LogData +="1;"; else LogData += "0;";
+      LogData += StrFanRuntime;
       
-      save_to_SD(); // Daten auf die SD Karte speichern
+      save_to_SD(); // write data to SD card
    }
+  
+  delay(4000);   // wait time between 2 measures
+  wdt_reset();   // reset watchdog
+  pre_measure_index=measure_index;
+  measure_index++;
+   
 }
-//--------------------------------------------------------------------------------------------------------
 
-float taupunkt(float t, float r) {
+float drewpoint(float t, float r) {
   
   float a, b;
     
@@ -281,18 +308,18 @@ float taupunkt(float t, float r) {
     b = 240.7;
   }
 
-  // Saettigungsdampfdruck in hPa
-  float sdd = 6.1078 * pow(10, (a*t)/(b+t));
+  // satiation vapor pressure in hPa
+  float svp = 6.1078 * pow(10, (a*t)/(b+t));
 
-  // Dampfdruck in hPa
-  float dd = sdd * (r/100);
+  // vapor pressure in hPa
+  float vp = svp * (r/100);
 
-  // v-Parameter
-  float v = log10(dd/6.1078);
+  // v parameter
+  float v = log10(vp/6.1078);
 
-  // Taupunkttemperatur (°C)
-  float tt = (b*v) / (a-v);
-  return { tt };  
+  // drew point in °C
+  float dp = (b*v) / (a-v);
+  return { dp };  
 }
 
 
@@ -301,62 +328,61 @@ void software_Reset() // Startet das Programm neu, nicht aber die Sensoren oder 
     asm volatile ("  jmp 0");  
   }
 
-//--------------------------------------------SD.ino-start----------------------------------------------------
-File logFile;                    // Variable fuer die csv-Datei
-#define CS_PIN 10                // An diesem Pin ist die CS-Leitung angeschlossen
+//******* SD card *******
+File logFile;                    // variable for the CSV log file
+#define PIN_SD_CS 10             // pin for the CS wire of the SD card reader
 
-unsigned long TimeDaten = 0;    // zur Berechnung, wann wieder gespeichert wird
-
+unsigned long TimeData = 0;      // needed to calculate next time to save data
 
 void test_SD(){
   if (logging == true)
   {
-    // --------- SD-Karte suchen  -------------------
+    //******* SD card search *******
   lcd.clear();
   lcd.setCursor(0,0);
-  lcd.print(F("Suche SD Karte.."));
-  Serial.println(F("Suche SD Karte.."));
+  lcd.print(F("Search for SD card.."));
+  Serial.println(F("Search for SD card.."));
   lcd.setCursor(2,1);
 
-  if (!SD.begin(CS_PIN)){
-   lcd.print(F("SD nicht gefunden!"));
-   Serial.println(F("SD nicht gefunden!"));
+  if (!SD.begin(PIN_SD_CS)){
+   lcd.print(F("SD card NOT found!"));
+   Serial.println(F("SD card NOT found!"));
    logging = false;
    } else {
-    lcd.print(F("SD  gefunden"));
-    Serial.println(F("SD gefunden"));
+    lcd.print(F("SD card OK!"));
+    Serial.println(F("SD card OK!"));
     if (not SD.exists(logFileName) )  
     {
       logFile = SD.open(logFileName, FILE_WRITE); 
-      logFile.println(Headerzeile); // Header schreiben
+      logFile.println(logHeaderLine);               // write header
       logFile.close();  
     }    
    }
-   delay(3000);   // Zeit um das Display zu lesen
-   wdt_reset();   // Watchdog zuruecksetzen
+   delay(3000);   // time to read the display
+   wdt_reset();   // reset watchdog
   }
 }
 
 
+//******* save measures to SD card *******
 void save_to_SD()
 { 
   unsigned long t; 
 
  t = millis() / 60000;               
-  if (  TimeDaten == 0 ) TimeDaten =  t;  
-
-  // -------------------------  Sensorenwerte abspeichern ----------------------
-  if (((TimeDaten + LogInterval) <= t)  or ( Tageswechsel ))
+  if (  TimeData == 0 ) TimeData =  t;  
+  
+  if (((TimeData + LogInterval) <= t)  or ( DaySwitched ))
   {
-    TimeDaten = t;
-    Tageswechsel=false;
+    TimeData = t;
+    DaySwitched=false;
     test_SD();
-    wdt_reset(); // Watchdog zuruecksetzen
+    wdt_reset();      // reset watchdog
       lcd.clear();
-      lcd.print(F("Speichere Datensatz"));
-      Serial.print(F("speicher Datensatz "));   
+      lcd.print(F("Saving data set "));
+      Serial.print(F("Saving data set "));   
       make_time_stamp();
-      File logFile = SD.open(logFileName, FILE_WRITE);  // Oeffne Datei
+      File logFile = SD.open(logFileName, FILE_WRITE);  // Open file
       Serial.println(LogData);  
       logFile.print (stamp);
       logFile.println( ';' + LogData );
@@ -364,10 +390,8 @@ void save_to_SD()
     delay(4000);
   } 
 }
-//--------------------------------------------SD.ino-end----------------------------------------------------
 
-//--------------------------------------------Zeit.ino-start----------------------------------------------------
-
+//******* creates time stamp and writes it on the serial monitor *******
 void make_time_stamp()
 {
   RTC.read(tm);
@@ -375,7 +399,7 @@ void make_time_stamp()
   Serial.println(stamp);
 }
 
-
+//******* function to stat and check the real time clock *******
 bool RTC_start()
 { 
  if (logging == true)
@@ -388,14 +412,14 @@ bool RTC_start()
     
   } else {
     if (RTC.chipPresent()) {
-      Serial.println(F("RTC hat keine Zeit"));
+      Serial.println(F("No time on RTC"));
       lcd.clear();
-      lcd.print(F("RTC hat keine Zeit"));
+      lcd.print(F("No time on RTC"));
       delay(2000);
     } else {
-      Serial.println(F("RTC hat keine Zeit"));
+      Serial.println(F("No time on RTC"));
       lcd.clear();
-      lcd.print(F("Kein Signal vom RTC"));
+      lcd.print(F("No time on RTC"));
       delay(2000);
     }
     logging = false;
@@ -403,50 +427,49 @@ bool RTC_start()
   }
  }
 }
-//--------------------------------------------Zeit.ino-end----------------------------------------------------
 
-
-void werteausgabe(float t, float h, float tp, int row)
+//******* displays measures of all 4 sensors on the LCD and serial monitor *******
+void measuresoutput(float t, float h, float tp, int row)
 {
    char buffer_float[6];
    String buffer_row="";
 
    dtostrf(t,4,1,buffer_float);
-   buffer_row=String(buffer_float)+"C ";  // Sonderzeichen °C
+   buffer_row=String(buffer_float)+"C ";  
    dtostrf(h,5,1,buffer_float);
    buffer_row=" "+buffer_row+String(buffer_float)+"% "; 
    dtostrf(tp,5,1,buffer_float);
-   buffer_row=buffer_row+String(buffer_float)+"C";  // Sonderzeichen °C   
+   buffer_row=buffer_row+String(buffer_float)+"C";     
    lcd.setCursor(0,row);
    lcd.print(buffer_row);
    Serial.println(buffer_row);
    lcd.setCursor(5,row);
-   lcd.write((uint8_t)0); // Sonderzeichen °C Sensor Temperatur
+   lcd.write((uint8_t)0); // Special char ° for temperatur
    lcd.setCursor(19,row);
-   lcd.write((uint8_t)0); // Sonderzeichen °C Taupunkt
-
+   lcd.write((uint8_t)0); // Special char ° for drew point
 }
 
-void check_sensor (int mw_index)
+//******* checks all 4 DHT sensors *******
+void check_sensor (int current_measure)
 {
     int i = 0;
     char buffer[55];
     while (i<4)
     {
-      if (isnan(h[i][mw_index]) || isnan(t[i][mw_index]) || h[i][mw_index] > 100 || h[i][mw_index] < 1 || t[i][mw_index] < -40 || t[i][mw_index] > 80 )  
+      if (isnan(h[i][current_measure]) || isnan(t[i][current_measure]) || h[i][current_measure] > 100 || h[i][current_measure] < 1 || t[i][current_measure] < -40 || t[i][current_measure] > 80 )  
       {
-        sprintf(buffer,"Fehler beim Auslesen von Sensor %i! t=%d; h=%d", i+1, t[i][mw_index], h[i][mw_index]);
+        sprintf(buffer,"ERROR sensor %i! t=%d; h=%d", i+1, t[i][current_measure], h[i][current_measure]);
         Serial.println(buffer);
-        sprintf(buffer,"Fehler S%i!", i+1);
+        sprintf(buffer,"ERROR sensor %i!", i+1);
         lcd.setCursor(5,i);
         lcd.print(buffer);
-        fehler = true;
-        digitalWrite(ERRORPIN, HIGH); // Error-LED einschalten
+        error = true;
+        digitalWrite(PINERROR, HIGH); // Error LED on
       }
       else 
       {
        lcd.setCursor(5,i);
-       sprintf(buffer,"S%i ist OK!", i+1);
+       sprintf(buffer,"Sensor %i is OK!", i+1);
        Serial.println(buffer);
        lcd.print(buffer);
       }
@@ -454,20 +477,35 @@ void check_sensor (int mw_index)
       delay(1000);
     }
     Serial.println();
+    wdt_reset();      // reset watchdog
 }
 
-void read_sensor (int mw_index) {
+//******* read all 4 sensors *******
+void read_sensor (int i) {
 
-
-      h[0][mw_index] = dht1.readHumidity()+korrektur[0][1];     // auslesen S1 Luftfeuchtigkeit und speichern unter h[mw_index] 
-      t[0][mw_index] = dht1.readTemperature()+korrektur[0][0];  // auslesen S1 Temperatur und speichern unter t[mw_index]
-      h[1][mw_index] = dht2.readHumidity()+korrektur[1][1];     // auslesen S2 Luftfeuchtigkeit und speichern unter h[mw_index] 
-      t[1][mw_index] = dht2.readTemperature()+korrektur[1][0];  // auslesen S2 Temperatur und speichern unter t[mw_index]
-      h[2][mw_index] = dht3.readHumidity()+korrektur[2][1];     // auslesen S3 Luftfeuchtigkeit und speichern unter h[mw_index] 
-      t[2][mw_index] = dht3.readTemperature()+korrektur[2][0];  // auslesen S3 Temperatur und speichern unter t[mw_index]
-      h[3][mw_index] = dht4.readHumidity()+korrektur[3][1];     // auslesen S4 Luftfeuchtigkeit und speichern unter h[mw_index] 
-      t[3][mw_index] = dht4.readTemperature()+korrektur[3][0];  // auslesen S4 Temperatur und speichern unter t[mw_index]
+      h[0][i] = dhtsi1.readHumidity()+sensor_corr[0][1];     // read humidity SI1, correct it and store it at h[i] 
+      t[0][i] = dhtsi1.readTemperature()+sensor_corr[0][0];  // read temperature SI1, correct it and store it at t[i]
+      h[1][i] = dhtsi2.readHumidity()+sensor_corr[1][1];     // read humidity SI2, correct it and store it at h[i] 
+      t[1][i] = dhtsi2.readTemperature()+sensor_corr[1][0];  // read temperature SI2, correct it and store it at t[i]
+      h[2][i] = dhtso1.readHumidity()+sensor_corr[2][1];     // read humidity SO1, correct it and store it at h[i] 
+      t[2][i] = dhtso1.readTemperature()+sensor_corr[2][0];  // read temperature SO1, correct it and store it at t[i]
+      h[3][i] = dhtso2.readHumidity()+sensor_corr[3][1];     // read humidity SO2, correct it and store it at h[i] 
+      t[3][i] = dhtso2.readTemperature()+sensor_corr[3][0];  // read temperature SO2, correct it and store it at t[i]
 
       delay(1000);
 
+}
+
+//******* calculate average for latest 3 measures *******
+void average_measures () {
+
+  int i = 0;
+
+  while (i < 4)
+  {
+    h[i][measure_index] = (h[i][0]+h[i][1]+h[i][2])/3;   // calculate average for humidity
+    t[i][measure_index] = (t[i][0]+t[i][1]+t[i][2])/3;   // calculate average for temperature
+    i++;
+  }
+  
 }
