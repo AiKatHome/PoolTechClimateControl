@@ -1,27 +1,27 @@
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * ** * * * * * * * * 
 *                                                                                                         *  
 *                 P o o l   T e c h   C l i m a t e  C o n t r o l for Arduino                            *
-*                                 a drew point vantilation system                                         *
+*                                 a dew point vantilation system                                          *
 *                                                                                                         *
-*                                             A       K         K                                         *
-*                                           A A   I   K       K                                           *
-*                                         A   A       K     K                                             *
-*                                       A     A   I   K   K  K                                            *
-*                                     A A A A A   I   K K      K                                          *
-*                                   A         A   I   K          K                                        *
+*                                             A         K         K                                       *
+*                                           A A    I    K       K                                         *
+*                                         A   A         K     K                                           *
+*                                       A     A    I    K   K K                                           *
+*                                     A A A A A    I    K K     K                                         *
+*                                   A         A    I    K         K                                       *
 *                                                                                                         * 
 *   This code bases on https://github.com/MakeMagazinDE/Taupunktluefter                                   *
 *                                                                                                         *     
-*   I mainly adopted it for my purpose (climate control for my pool tech shaft) Jun 2022.                 *
+*   I mainly adapted it for my purpose (climate control for my pool tech shaft) Jun 2022.                 *
 *   This repository can be found here https://github.com/AiKatHome/PoolTechClimateControl                 *
 *                                                                                                         *            
 *   + added a pair of sensors (now 2 inside and 2 outside) to detect defect sensors and false measures    *
 *   + store 3 measures to average the results (again to compensate false measures)                        *
-*   + there is a push button to activate the display                                                      *
+*   + there is a push button to switch the display backlight on/off                                       *
 *                                                                                                         *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#define SW_version "Version: 2.99 dev"
+#define SW_VERSION "Version: 2.99 dev"
 
 // This code needs the following libraries
 #include <DHT.h>
@@ -32,13 +32,13 @@
 #include <SD.h>
 #include <SPI.h>
 
-#define PINFAN      6  // Pin for the fan relay
-#define PINDHT_SI1  5  // Data pin for DHT sensor 1 inside
-#define PINDHT_SI2  4  // Data pin for DHT sensor 2 inside
-#define PINDHT_SO1  7  // Data pin for DHT sensor 1 outside
-#define PINDHT_SO2  8  // Data pin for DHT sensor 2 outside
-#define PINERROR    9  // Pin for error LED
-#define PINDISPLAY  1  // Pin to active the LCD display
+#define PIN_FAN      6  // Pin for the fan relay
+#define PIN_DHT_SI1  5  // Data pin for DHT sensor 1 inside
+#define PIN_DHT_SI2  4  // Data pin for DHT sensor 2 inside
+#define PIN_DHT_SO1  7  // Data pin for DHT sensor 1 outside
+#define PIN_DHT_SO2  8  // Data pin for DHT sensor 2 outside
+#define PIN_ERROR    9  // Pin for error LED
+#define PIN_DISPLAY  3  // Pin to active the LCD display
 
 #define FAN_ON LOW     // ouput to switch fan on
 #define FAN_OFF HIGH   // ouput to switch fan off
@@ -73,10 +73,10 @@ int pre_measure_index = 0;  // previous measure index: 0-2 used to access the ar
 #define TEMP_MIN_INSIDE   5.0   // minimum temperature inside, where the fan can be activated
 #define TEMP_MIN_OUTSIDE  -5.0  // minimum temperature outside, where the fan can be activated
 
-DHT dhtsi1(PINDHT_SI1, DHTTYPE_SI1);  //inside sendor 1 is now addressed via "dhtsi1"
-DHT dhtsi2(PINDHT_SI2, DHTTYPE_SI2);  //inside sendor 2 is now addressed via "dhtsi2"
-DHT dhtso1(PINDHT_SO1, DHTTYPE_SO1);  //outside sendor 1 is now addressed via "dhtso1"
-DHT dhtso2(PINDHT_SO2, DHTTYPE_SO2);  //outside sendor 2 is now addressed via "dhtso2"
+DHT dhtsi1(PIN_DHT_SI1, DHTTYPE_SI1);  //inside sendor 1 is now addressed via "dhtsi1"
+DHT dhtsi2(PIN_DHT_SI2, DHTTYPE_SI2);  //inside sendor 2 is now addressed via "dhtsi2"
+DHT dhtso1(PIN_DHT_SO1, DHTTYPE_SO1);  //outside sendor 1 is now addressed via "dhtso1"
+DHT dhtso2(PIN_DHT_SO2, DHTTYPE_SO2);  //outside sendor 2 is now addressed via "dhtso2"
 
 LiquidCrystal_I2C lcd(0x27,20,4); // LCD: setting the I2C address and display size
 tmElements_t tm;                  // tm is the insance of the real time clock DS1307RTC
@@ -101,15 +101,16 @@ void setup()
   wdt_enable(WDTO_8S); // set watchdog timer to 8 seconds
   Serial.begin(9600);  // serial print, which can be used for debugging or if no LCD used
   lcd.init();
-  lcd.backlight();  
+  lcd.backlight();   
   
   //******* data logging on SD card *******
   if (logging == true)
   { 
     lcd.setCursor(0,1);
-    lcd.print(SW_version);        // display software version
-    Serial.println(SW_version);
+    lcd.print(SW_VERSION);        // display software version
+    Serial.println(SW_VERSION);
     RTC_start();                  // RTC modul test. If there is an error => no logging
+    
     delay (4000);                 // Delay to read the display
     lcd.clear(); 
     wdt_reset();                  // Watchdog reset
@@ -126,11 +127,12 @@ void setup()
     }
   } 
     
-  pinMode(PINFAN, OUTPUT);        // Define fan pin as output
-  digitalWrite(PINFAN, FAN_OFF);  // turn fan off
-  pinMode(PINERROR, OUTPUT);      // Define error pin as output
-  digitalWrite(PINERROR, HIGH);   // turn on error led 
-  
+  pinMode(PIN_FAN, OUTPUT);              // Define fan pin as output
+  digitalWrite(PIN_FAN, FAN_OFF);        // turn fan off
+  pinMode(PIN_ERROR, OUTPUT);            // Define error pin as output
+  digitalWrite(PIN_ERROR, HIGH);         // turn on error led
+  pinMode(PIN_DISPLAY, INPUT_PULLUP);    // Define display pin as input
+     
   Serial.println(F("Testing sensors.."));
   lcd.clear();                  
   lcd.setCursor(0,0);
@@ -139,11 +141,12 @@ void setup()
   
   byte Degree[8] = {B00111,B00101,B00111,B0000,B00000,B00000,B00000,B00000};      // define special char degree => °
   lcd.createChar(0, Degree);
-    
-  dhtsi1.begin();                 // start sensors
-  dhtsi2.begin();
-  dhtso1.begin();
-  dhtso2.begin();
+
+  // start sensors  
+  dhtsi1.begin();          // sensor inside one
+  dhtsi2.begin();          // sensor inside two 
+  dhtso1.begin();          // sensor outside one 
+  dhtso2.begin();          // sensor outside two 
 
   measure_index=0;
   while (measure_index<3)         // read sensors at start-up and fill measure array with inital measuers
@@ -153,21 +156,26 @@ void setup()
     }
   measure_index=0;
   pre_measure_index=2;
+  display=false;
 }
 
 void loop() {
     
-    if (error == true)              // check if we have faulty measures from sensors
+  if (digitalRead(PIN_DISPLAY)==LOW) toggle_backlight();
+  
+  if (error == true)              // check if we have faulty measures from sensors
     {
-      error = false;
-      digitalWrite(PINERROR, LOW);  // Error LED off    
-      check_sensor(measure_index);  // recheck sensors
-      delay(2000);
+    lcd.backlight();
+    error = false;
+    digitalWrite(PIN_ERROR, LOW);  // Error LED off    
+    check_sensor(measure_index);  // recheck sensors 
+    delay(2000);
+    if (display==false) lcd.noBacklight();
     }
      
    if (error == true) 
    {
-    digitalWrite(PINFAN, FAN_OFF); // If there still is an error => fan off 
+    digitalWrite(PIN_FAN, FAN_OFF); // If there still is an error => fan off 
     lcd.setCursor(0,3);
     lcd.print(F("Restart ....."));
     while (1);                     // This infinity loop will trigger a restart via the watchdog
@@ -195,33 +203,34 @@ void loop() {
    measuresoutput(t[3][measure_index], h[3][measure_index],DrewPoint_SO2,3);
    Serial.println();
 
-   delay(6000); 
-   wdt_reset(); // rest watchdog
+  if (digitalRead(PIN_DISPLAY)==LOW) toggle_backlight();
+  delay(6000); 
+  wdt_reset(); // rest watchdog
 
-   lcd.clear();
-   lcd.setCursor(0,0);
+  lcd.clear();
+  lcd.setCursor(0,0);
    
 float DrewPointDiffI = abs(DrewPoint_SI1 - DrewPoint_SI2);
 if (DrewPointDiffI>1) {
     lcd.println(F("ERROR diff DP inside > 1!"));
-    Serial.println(F("ERROR diff drew point inside abs(SI1 - SI2) > 1!"));
+    Serial.println(F("ERROR diff dew point inside abs(SI1 - SI2) > 1!"));
     error=true;
   }
   else{
     error=false;
   }
-float DrewPointI = (DrewPoint_SI1 + DrewPoint_SI2)/2;    // calcutlate average drew point inside
+float DrewPointI = (DrewPoint_SI1 + DrewPoint_SI2)/2;    // calcutlate average dew point inside
 
 float DrewPointDiffO = abs(DrewPoint_SO1 - DrewPoint_SO2);
 if (DrewPointDiffO>1) {
     lcd.println(F("ERROR diff DP outside > 1!"));
-    Serial.println(F("ERROR diff drew point inside abs(SO1 - SO2) > 1!"));
+    Serial.println(F("ERROR diff dew point inside abs(SO1 - SO2) > 1!"));
     error=true;
   }
   else{
     error=false;
   }
-float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average drew point outside  
+float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average dew point outside  
   float DeltaDP = DrewPointI - DrewPointO;
 
   if (DeltaDP > (DEW_POINT_MIN + HYSTERESIS))fan = true;
@@ -231,12 +240,12 @@ float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average d
 
   if (fan == true)
   {
-  digitalWrite(PINFAN, FAN_ON); // switch fan on
+  digitalWrite(PIN_FAN, FAN_ON); // switch fan on
   lcd.print(F("Fan is ON"));  
   } 
   else 
   {                             
-  digitalWrite(PINFAN, FAN_OFF); // switch fan off
+  digitalWrite(PIN_FAN, FAN_OFF); // switch fan off
   lcd.print(F("Fan is OFF"));
   }
 
@@ -288,6 +297,15 @@ float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average d
       save_to_SD(); // write data to SD card
    }
   
+   if (digitalRead(PIN_DISPLAY)==LOW) {
+     toggle_backlight();
+     Serial.println("PIN_DISPLAY is low!");
+    }
+    else {
+      Serial.println("PIN_DISPLAY is high!");
+    }
+
+      
   delay(4000);   // wait time between 2 measures
   wdt_reset();   // reset watchdog
   pre_measure_index=measure_index;
@@ -317,7 +335,7 @@ float drewpoint(float t, float r) {
   // v parameter
   float v = log10(vp/6.1078);
 
-  // drew point in °C
+  // dew point in °C
   float dp = (b*v) / (a-v);
   return { dp };  
 }
@@ -338,6 +356,7 @@ void test_SD(){
   if (logging == true)
   {
     //******* SD card search *******
+  
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print(F("Search for SD card.."));
@@ -358,6 +377,7 @@ void test_SD(){
       logFile.close();  
     }    
    }
+   
    delay(3000);   // time to read the display
    wdt_reset();   // reset watchdog
   }
@@ -378,6 +398,7 @@ void save_to_SD()
     DaySwitched=false;
     test_SD();
     wdt_reset();      // reset watchdog
+      
       lcd.clear();
       lcd.print(F("Saving data set "));
       Serial.print(F("Saving data set "));   
@@ -386,7 +407,8 @@ void save_to_SD()
       Serial.println(LogData);  
       logFile.print (stamp);
       logFile.println( ';' + LogData );
-    logFile.close(); 
+    logFile.close();
+
     delay(4000);
   } 
 }
@@ -415,11 +437,13 @@ bool RTC_start()
       Serial.println(F("No time on RTC"));
       lcd.clear();
       lcd.print(F("No time on RTC"));
+      
       delay(2000);
     } else {
       Serial.println(F("No time on RTC"));
       lcd.clear();
       lcd.print(F("No time on RTC"));
+      
       delay(2000);
     }
     logging = false;
@@ -439,14 +463,14 @@ void measuresoutput(float t, float h, float tp, int row)
    dtostrf(h,5,1,buffer_float);
    buffer_row=" "+buffer_row+String(buffer_float)+"% "; 
    dtostrf(tp,5,1,buffer_float);
-   buffer_row=buffer_row+String(buffer_float)+"C";     
+   buffer_row=buffer_row+String(buffer_float)+"C";  
    lcd.setCursor(0,row);
    lcd.print(buffer_row);
    Serial.println(buffer_row);
    lcd.setCursor(5,row);
    lcd.write((uint8_t)0); // Special char ° for temperatur
    lcd.setCursor(19,row);
-   lcd.write((uint8_t)0); // Special char ° for drew point
+   lcd.write((uint8_t)0); // Special char ° for dew point
 }
 
 //******* checks all 4 DHT sensors *******
@@ -454,6 +478,7 @@ void check_sensor (int current_measure)
 {
     int i = 0;
     char buffer[55];
+   
     while (i<4)
     {
       if (isnan(h[i][current_measure]) || isnan(t[i][current_measure]) || h[i][current_measure] > 100 || h[i][current_measure] < 1 || t[i][current_measure] < -40 || t[i][current_measure] > 80 )  
@@ -464,7 +489,7 @@ void check_sensor (int current_measure)
         lcd.setCursor(5,i);
         lcd.print(buffer);
         error = true;
-        digitalWrite(PINERROR, HIGH); // Error LED on
+        digitalWrite(PIN_ERROR, HIGH); // Error LED on
       }
       else 
       {
@@ -474,7 +499,9 @@ void check_sensor (int current_measure)
        lcd.print(buffer);
       }
       i++;
+       
       delay(1000);
+     
     }
     Serial.println();
     wdt_reset();      // reset watchdog
@@ -483,17 +510,16 @@ void check_sensor (int current_measure)
 //******* read all 4 sensors *******
 void read_sensor (int i) {
 
-      h[0][i] = dhtsi1.readHumidity()+sensor_corr[0][1];     // read humidity SI1, correct it and store it at h[i] 
-      t[0][i] = dhtsi1.readTemperature()+sensor_corr[0][0];  // read temperature SI1, correct it and store it at t[i]
-      h[1][i] = dhtsi2.readHumidity()+sensor_corr[1][1];     // read humidity SI2, correct it and store it at h[i] 
-      t[1][i] = dhtsi2.readTemperature()+sensor_corr[1][0];  // read temperature SI2, correct it and store it at t[i]
-      h[2][i] = dhtso1.readHumidity()+sensor_corr[2][1];     // read humidity SO1, correct it and store it at h[i] 
-      t[2][i] = dhtso1.readTemperature()+sensor_corr[2][0];  // read temperature SO1, correct it and store it at t[i]
-      h[3][i] = dhtso2.readHumidity()+sensor_corr[3][1];     // read humidity SO2, correct it and store it at h[i] 
-      t[3][i] = dhtso2.readTemperature()+sensor_corr[3][0];  // read temperature SO2, correct it and store it at t[i]
+  h[0][i] = dhtsi1.readHumidity()+sensor_corr[0][1];     // read humidity SI1, correct it and store it at h[i] 
+  t[0][i] = dhtsi1.readTemperature()+sensor_corr[0][0];  // read temperature SI1, correct it and store it at t[i]
+  h[1][i] = dhtsi2.readHumidity()+sensor_corr[1][1];     // read humidity SI2, correct it and store it at h[i] 
+  t[1][i] = dhtsi2.readTemperature()+sensor_corr[1][0];  // read temperature SI2, correct it and store it at t[i]
+  h[2][i] = dhtso1.readHumidity()+sensor_corr[2][1];     // read humidity SO1, correct it and store it at h[i] 
+  t[2][i] = dhtso1.readTemperature()+sensor_corr[2][0];  // read temperature SO1, correct it and store it at t[i]
+  h[3][i] = dhtso2.readHumidity()+sensor_corr[3][1];     // read humidity SO2, correct it and store it at h[i] 
+  t[3][i] = dhtso2.readTemperature()+sensor_corr[3][0];  // read temperature SO2, correct it and store it at t[i]
 
-      delay(1000);
-
+  delay(1000);
 }
 
 //******* calculate average for latest 3 measures *******
@@ -508,4 +534,19 @@ void average_measures () {
     i++;
   }
   
+}
+
+//******* toggles the LCD display backlight should be on or off ********
+void toggle_backlight () {
+      
+    display = !display;
+    if (display == true) {
+      lcd.backlight();
+      Serial.println("Display backlight on!");
+    }
+    else {
+      lcd.noBacklight();
+      Serial.println("Display backlight off!");
+    }
+    delay(1000);
 }
