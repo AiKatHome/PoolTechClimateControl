@@ -21,7 +21,7 @@
 *                                                                                                         *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#define SW_version "Version: 2.99 dev"
+#define SW_VERSION "Version: 2.99 dev"
 
 // This code needs the following libraries
 #include <DHT.h>
@@ -32,13 +32,13 @@
 #include <SD.h>
 #include <SPI.h>
 
-#define PINFAN      6  // Pin for the fan relay
-#define PINDHT_SI1  5  // Data pin for DHT sensor 1 inside
-#define PINDHT_SI2  4  // Data pin for DHT sensor 2 inside
-#define PINDHT_SO1  7  // Data pin for DHT sensor 1 outside
-#define PINDHT_SO2  8  // Data pin for DHT sensor 2 outside
-#define PINERROR    9  // Pin for error LED
-#define PINDISPLAY  3  // Pin to active the LCD display
+#define PIN_FAN      6  // Pin for the fan relay
+#define PIN_DHT_SI1  5  // Data pin for DHT sensor 1 inside
+#define PIN_DHT_SI2  4  // Data pin for DHT sensor 2 inside
+#define PIN_DHT_SO1  7  // Data pin for DHT sensor 1 outside
+#define PIN_DHT_SO2  8  // Data pin for DHT sensor 2 outside
+#define PIN_ERROR    9  // Pin for error LED
+#define PIN_DISPLAY  3  // Pin to active the LCD display
 
 #define FAN_ON LOW     // ouput to switch fan on
 #define FAN_OFF HIGH   // ouput to switch fan off
@@ -73,10 +73,10 @@ int pre_measure_index = 0;  // previous measure index: 0-2 used to access the ar
 #define TEMP_MIN_INSIDE   5.0   // minimum temperature inside, where the fan can be activated
 #define TEMP_MIN_OUTSIDE  -5.0  // minimum temperature outside, where the fan can be activated
 
-DHT dhtsi1(PINDHT_SI1, DHTTYPE_SI1);  //inside sendor 1 is now addressed via "dhtsi1"
-DHT dhtsi2(PINDHT_SI2, DHTTYPE_SI2);  //inside sendor 2 is now addressed via "dhtsi2"
-DHT dhtso1(PINDHT_SO1, DHTTYPE_SO1);  //outside sendor 1 is now addressed via "dhtso1"
-DHT dhtso2(PINDHT_SO2, DHTTYPE_SO2);  //outside sendor 2 is now addressed via "dhtso2"
+DHT dhtsi1(PIN_DHT_SI1, DHTTYPE_SI1);  //inside sendor 1 is now addressed via "dhtsi1"
+DHT dhtsi2(PIN_DHT_SI2, DHTTYPE_SI2);  //inside sendor 2 is now addressed via "dhtsi2"
+DHT dhtso1(PIN_DHT_SO1, DHTTYPE_SO1);  //outside sendor 1 is now addressed via "dhtso1"
+DHT dhtso2(PIN_DHT_SO2, DHTTYPE_SO2);  //outside sendor 2 is now addressed via "dhtso2"
 
 LiquidCrystal_I2C lcd(0x27,20,4); // LCD: setting the I2C address and display size
 tmElements_t tm;                  // tm is the insance of the real time clock DS1307RTC
@@ -107,8 +107,8 @@ void setup()
   if (logging == true)
   { 
     lcd.setCursor(0,1);
-    lcd.print(SW_version);        // display software version
-    Serial.println(SW_version);
+    lcd.print(SW_VERSION);        // display software version
+    Serial.println(SW_VERSION);
     RTC_start();                  // RTC modul test. If there is an error => no logging
     
     delay (4000);                 // Delay to read the display
@@ -127,11 +127,11 @@ void setup()
     }
   } 
     
-  pinMode(PINFAN, OUTPUT);              // Define fan pin as output
-  digitalWrite(PINFAN, FAN_OFF);        // turn fan off
-  pinMode(PINERROR, OUTPUT);            // Define error pin as output
-  digitalWrite(PINERROR, HIGH);         // turn on error led
-  pinMode(PINDISPLAY, INPUT_PULLUP);    // Define display pin as input
+  pinMode(PIN_FAN, OUTPUT);              // Define fan pin as output
+  digitalWrite(PIN_FAN, FAN_OFF);        // turn fan off
+  pinMode(PIN_ERROR, OUTPUT);            // Define error pin as output
+  digitalWrite(PIN_ERROR, HIGH);         // turn on error led
+  pinMode(PIN_DISPLAY, INPUT_PULLUP);    // Define display pin as input
      
   Serial.println(F("Testing sensors.."));
   lcd.clear();                  
@@ -161,13 +161,13 @@ void setup()
 
 void loop() {
     
-  if (digitalRead(PINDISPLAY)==LOW) toggle_backlight();
+  if (digitalRead(PIN_DISPLAY)==LOW) toggle_backlight();
   
   if (error == true)              // check if we have faulty measures from sensors
     {
     lcd.backlight();
     error = false;
-    digitalWrite(PINERROR, LOW);  // Error LED off    
+    digitalWrite(PIN_ERROR, LOW);  // Error LED off    
     check_sensor(measure_index);  // recheck sensors 
     delay(2000);
     if (display==false) lcd.noBacklight();
@@ -175,7 +175,7 @@ void loop() {
      
    if (error == true) 
    {
-    digitalWrite(PINFAN, FAN_OFF); // If there still is an error => fan off 
+    digitalWrite(PIN_FAN, FAN_OFF); // If there still is an error => fan off 
     lcd.setCursor(0,3);
     lcd.print(F("Restart ....."));
     while (1);                     // This infinity loop will trigger a restart via the watchdog
@@ -203,7 +203,7 @@ void loop() {
    measuresoutput(t[3][measure_index], h[3][measure_index],DrewPoint_SO2,3);
    Serial.println();
 
-  if (digitalRead(PINDISPLAY)==LOW) toggle_backlight();
+  if (digitalRead(PIN_DISPLAY)==LOW) toggle_backlight();
   delay(6000); 
   wdt_reset(); // rest watchdog
 
@@ -240,12 +240,12 @@ float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average d
 
   if (fan == true)
   {
-  digitalWrite(PINFAN, FAN_ON); // switch fan on
+  digitalWrite(PIN_FAN, FAN_ON); // switch fan on
   lcd.print(F("Fan is ON"));  
   } 
   else 
   {                             
-  digitalWrite(PINFAN, FAN_OFF); // switch fan off
+  digitalWrite(PIN_FAN, FAN_OFF); // switch fan off
   lcd.print(F("Fan is OFF"));
   }
 
@@ -297,12 +297,12 @@ float DrewPointO = (DrewPoint_SO1 + DrewPoint_SO2)/2;    // calcutlate average d
       save_to_SD(); // write data to SD card
    }
   
-   if (digitalRead(PINDISPLAY)==LOW) {
+   if (digitalRead(PIN_DISPLAY)==LOW) {
      toggle_backlight();
-     Serial.println("PINDISPLAY is low!");
+     Serial.println("PIN_DISPLAY is low!");
     }
     else {
-      Serial.println("PINDISPLAY is high!");
+      Serial.println("PIN_DISPLAY is high!");
     }
 
       
@@ -489,7 +489,7 @@ void check_sensor (int current_measure)
         lcd.setCursor(5,i);
         lcd.print(buffer);
         error = true;
-        digitalWrite(PINERROR, HIGH); // Error LED on
+        digitalWrite(PIN_ERROR, HIGH); // Error LED on
       }
       else 
       {
